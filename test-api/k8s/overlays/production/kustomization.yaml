@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: test-api-prod
+
+resources:
+  - ../../base
+
+commonLabels:
+  environment: production
+
+patchesStrategicMerge:
+  - |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: test-api
+    spec:
+      replicas: 3
+      template:
+        spec:
+          containers:
+          - name: test-api
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+            env:
+            - name: OTEL_SERVICE_NAME
+              value: "test-api-prod"

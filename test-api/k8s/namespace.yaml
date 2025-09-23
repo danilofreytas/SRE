@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-api
+  labels:
+    name: test-api
+    app.kubernetes.io/name: test-api
+    app.kubernetes.io/part-of: observability-demo

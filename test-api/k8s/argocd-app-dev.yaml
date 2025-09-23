@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: test-api-dev
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: test-api
+    app.kubernetes.io/part-of: observability-demo
+    environment: development
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/danilo-reis/SRE.git
+    targetRevision: HEAD
+    path: test-api/k8s
+    kustomize:
+      commonLabels:
+        app.kubernetes.io/name: test-api
+        app.kubernetes.io/part-of: observability-demo
+        app.kubernetes.io/version: "1.0.0"
+        environment: development
+      # Override para ambiente de desenvolvimento
+      patchesStrategicMerge:
+        - |-
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: test-api
+          spec:
+            replicas: 1
+            template:
+              spec:
+                containers:
+                - name: test-api
+                  resources:
+                    requests:
+                      memory: "128Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "256Mi"
+                      cpu: "200m"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: test-api-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+  revisionHistoryLimit: 3

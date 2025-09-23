@@ -1,0 +1,243 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: test-api
+data:
+  DATABASE_URL: "postgresql://postgres:password123@postgres-service:5432/testdb"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://signoz-otel-collector.platform:4317"
+  OTEL_RESOURCE_ATTRIBUTES: "service.name=test-api,service.version=1.0.0,environment=production"
+  OTEL_SERVICE_NAME: "test-api"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-api-fixed-telemetry
+  namespace: test-api
+  labels:
+    app: test-api-fixed-telemetry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-api-fixed-telemetry
+  template:
+    metadata:
+      labels:
+        app: test-api-fixed-telemetry
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+        - name: test-api-fixed-telemetry
+          image: python:3.11-slim
+          command: ["/bin/bash"]
+          args:
+            - -c
+            - |
+              pip install fastapi uvicorn asyncpg opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-asyncpg pydantic
+              cat > /tmp/app.py << 'EOF'
+              import os
+              import asyncio
+              import asyncpg
+              from fastapi import FastAPI, HTTPException
+              from pydantic import BaseModel
+              import uvicorn
+              from opentelemetry import trace
+              from opentelemetry.sdk.resources import Resource
+              from opentelemetry.sdk.trace import TracerProvider
+              from opentelemetry.sdk.trace.export import BatchSpanProcessor
+              from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+              from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+              from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+              import logging
+
+              # Configuração do OpenTelemetry
+              resource = Resource.create({
+                  "service.name": "test-api",
+                  "service.version": "1.0.0",
+                  "environment": "production"
+              })
+
+              # Tracing
+              trace.set_tracer_provider(TracerProvider(resource=resource))
+              tracer = trace.get_tracer(__name__)
+              otlp_exporter_trace = OTLPSpanExporter(endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"), insecure=True)
+              span_processor = BatchSpanProcessor(otlp_exporter_trace)
+              trace.get_tracer_provider().add_span_processor(span_processor)
+
+              app = FastAPI(title="Test API with Telemetry", version="1.0.0")
+              FastAPIInstrumentor.instrument_app(app)
+              AsyncPGInstrumentor().instrument()
+
+              DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password123@localhost:5432/testdb")
+
+              class UserCreate(BaseModel):
+                  name: str
+                  email: str
+
+              class User(BaseModel):
+                  id: int
+                  name: str
+                  email: str
+                  created_at: str
+
+              async def connect_to_db():
+                  retries = 5
+                  for i in range(retries):
+                      try:
+                          conn = await asyncpg.connect(DATABASE_URL)
+                          await conn.execute('''
+                              CREATE TABLE IF NOT EXISTS users (
+                                  id SERIAL PRIMARY KEY,
+                                  name VARCHAR(100) NOT NULL,
+                                  email VARCHAR(100) UNIQUE NOT NULL,
+                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                              )
+                          ''')
+                          await conn.close()
+                          logging.info("Database connected and schema verified.")
+                          return
+                      except Exception as e:
+                          logging.error(f"Attempt {i+1} to connect to database failed: {e}")
+                          if i < retries - 1:
+                              await asyncio.sleep(2 ** i)
+
+              @app.on_event("startup")
+              async def startup_event():
+                  logging.info("Starting up application...")
+                  await connect_to_db()
+                  logging.info("Application started.")
+
+              @app.get("/")
+              async def read_root():
+                  with tracer.start_as_current_span("root_endpoint"):
+                      logging.info("Root endpoint accessed.")
+                      return {"message": "Welcome to the Test API with Telemetry! Visit /docs for API documentation."}
+
+              @app.get("/health")
+              async def health_check():
+                  with tracer.start_as_current_span("health_check"):
+                      logging.info("Health check endpoint accessed.")
+                      try:
+                          conn = await asyncpg.connect(DATABASE_URL)
+                          await conn.execute("SELECT 1")
+                          await conn.close()
+                          return {"status": "ok", "database": "connected"}
+                      except Exception as e:
+                          logging.error(f"Database health check failed: {e}")
+                          raise HTTPException(status_code=500, detail=f"Database connection failed: {e}")
+
+              @app.post("/users", response_model=User)
+              async def create_user(user: UserCreate):
+                  with tracer.start_as_current_span("create_user"):
+                      logging.info(f"Creating user: {user.email}")
+                      try:
+                          conn = await asyncpg.connect(DATABASE_URL)
+                          row = await conn.fetchrow(
+                              "INSERT INTO users(name, email) VALUES($1, $2) RETURNING id, name, email, created_at",
+                              user.name, user.email
+                          )
+                          await conn.close()
+                          return User(
+                              id=row["id"],
+                              name=row["name"],
+                              email=row["email"],
+                              created_at=str(row["created_at"])
+                          )
+                      except asyncpg.exceptions.UniqueViolationError:
+                          logging.warning(f"User with email {user.email} already exists.")
+                          raise HTTPException(status_code=409, detail="User with this email already exists")
+                      except Exception as e:
+                          logging.error(f"Error creating user: {e}")
+                          raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
+              @app.get("/users", response_model=list[User])
+              async def list_users():
+                  with tracer.start_as_current_span("list_users"):
+                      logging.info("Fetching all users.")
+                      try:
+                          conn = await asyncpg.connect(DATABASE_URL)
+                          rows = await conn.fetch("SELECT id, name, email, created_at FROM users ORDER BY created_at DESC")
+                          await conn.close()
+                          return [User(
+                              id=row["id"],
+                              name=row["name"],
+                              email=row["email"],
+                              created_at=str(row["created_at"])
+                          ) for row in rows]
+                      except Exception as e:
+                          logging.error(f"Error fetching users: {e}")
+                          raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
+              @app.get("/users/{user_id}", response_model=User)
+              async def get_user(user_id: int):
+                  with tracer.start_as_current_span("get_user"):
+                      logging.info(f"Fetching user with ID: {user_id}")
+                      try:
+                          conn = await asyncpg.connect(DATABASE_URL)
+                          row = await conn.fetchrow("SELECT id, name, email, created_at FROM users WHERE id = $1", user_id)
+                          await conn.close()
+                          if row is None:
+                              logging.warning(f"User with ID {user_id} not found.")
+                              raise HTTPException(status_code=404, detail="User not found")
+                          return User(
+                              id=row["id"],
+                              name=row["name"],
+                              email=row["email"],
+                              created_at=str(row["created_at"])
+                          )
+                      except Exception as e:
+                          logging.error(f"Error fetching user: {e}")
+                          raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
+              if __name__ == "__main__":
+                  uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+              EOF
+              python /tmp/app.py
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: api-config
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 1
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-api-fixed-telemetry-service
+  namespace: test-api
+  labels:
+    app: test-api-fixed-telemetry
+spec:
+  selector:
+    app: test-api-fixed-telemetry
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
