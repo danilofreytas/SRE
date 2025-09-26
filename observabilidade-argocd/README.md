@@ -1,109 +1,354 @@
-# ArgoCD - Repositório de Observabilidade
+# 🚀 ArgoCD - GitOps e Deployment Contínuo
 
-Este repositório contém os scripts e a documentação para a instalação isolada do ArgoCD com ApplicationSet em um cluster Kubernetes local.
+## 📋 Visão Geral
+
+Este repositório contém **scripts automatizados** e **documentação completa** para instalação e configuração do ArgoCD em ambientes Kubernetes, oferecendo uma solução completa de GitOps para deployment contínuo.
+
+### 🎯 Características
+
+- ✅ **Instalação automatizada** com scripts bash
+- ✅ **ApplicationSet** configurado para observabilidade
+- ✅ **Helm charts** para instalação simplificada
+- ✅ **Configuração de segurança** com certificados
+- ✅ **Interface web** moderna e intuitiva
+
+---
+
+## 🏗️ Arquitetura do ArgoCD
+
+```mermaid
+graph TB
+    subgraph "ArgoCD Components"
+        Server[ArgoCD Server]
+        Controller[Application Controller]
+        RepoServer[Repo Server]
+        ApplicationSet[ApplicationSet Controller]
+    end
+    
+    subgraph "External"
+        GitRepo[Git Repository]
+        K8sCluster[Kubernetes Cluster]
+    end
+    
+    subgraph "UI Access"
+        WebUI[Web UI]
+        CLI[ArgoCD CLI]
+    end
+    
+    GitRepo --> RepoServer
+    RepoServer --> Controller
+    Controller --> K8sCluster
+    ApplicationSet --> Controller
+    Server --> WebUI
+    Server --> CLI
+```
+
+---
 
 ## 🚀 Instalação
 
-Para instalar o ArgoCD isoladamente, siga os passos abaixo:
+### 📋 Pré-requisitos
 
-### Pré-requisitos
+- **Cluster Kubernetes** (Kind recomendado)
+- **Helm** (versão 3.8+)
+- **kubectl** configurado
+- **4GB RAM** mínimo
+- **2GB espaço** em disco
 
-Certifique-se de que um cluster Kubernetes (Kind) esteja em execução. Se não estiver, você pode instalá-lo usando o repositório `k8s-local` ou o script de gerenciamento completo.
-
-### Executar a Instalação
-
-1. Navegue até o diretório `argocd`:
-   ```bash
-   cd /home/danilo-reis/devops/repo/observabilidade-segmentado/argocd
-   ```
-2. Execute o script de instalação:
-   ```bash
-   chmod +x install.sh
-   ./install.sh
-   ```
-
-O script irá:
-- Verificar a existência do cluster Kind `observability`.
-- Verificar e instalar o `helm` (se não estiver presente).
-- Criar o namespace `argocd`.
-- Instalar o ArgoCD usando Helm.
-- Configurar ApplicationSet para observabilidade.
-- Aguardar os pods do ArgoCD ficarem prontos.
-
-## 📋 Verificação Pós-Instalação
-
-Após a execução do script, você pode verificar o status dos componentes do ArgoCD:
-
-- **Verificar pods do ArgoCD:**
-  ```bash
-  kubectl get pods -n argocd
-  ```
-- **Verificar ApplicationSet:**
-  ```bash
-  kubectl get applicationset -n argocd
-  ```
-- **Verificar Applications:**
-  ```bash
-  kubectl get applications -n argocd
-  ```
-- **Verificar serviços do ArgoCD:**
-  ```bash
-  kubectl get svc -n argocd
-  ```
-
-## 🌐 Acessando a UI do ArgoCD
-
-Para acessar a interface web do ArgoCD:
-
-1. **Execute o port-forward** em um terminal separado:
-   ```bash
-   kubectl port-forward svc/argocd-server -n argocd 8080:443
-   ```
-2. **Acesse em seu navegador:**
-   ```
-   https://localhost:8080
-   ```
-   (Você precisará aceitar o aviso de certificado, pois o ArgoCD usa um certificado autoassinado por padrão).
-
-### Obtendo a Senha Inicial do Admin
-
-A senha inicial para o usuário `admin` é armazenada em um segredo do Kubernetes. Para obtê-la:
+### ⚡ Instalação Rápida
 
 ```bash
+# 1. Navegar para o diretório
+cd observabilidade-argocd
+
+# 2. Executar instalação
+chmod +x install.sh
+./install.sh
+```
+
+### 🔧 Instalação Manual
+
+```bash
+# 1. Adicionar repositório Helm
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+
+# 2. Criar namespace
+kubectl create namespace argocd
+
+# 3. Instalar ArgoCD
+helm install argocd argo/argo-cd \
+  --namespace argocd \
+  --set server.service.type=ClusterIP \
+  --set server.ingress.enabled=false \
+  --set configs.params."server\.insecure"=true
+```
+
+---
+
+## 📊 Componentes Instalados
+
+### 🔧 Core Components
+
+| Componente | Namespace | Função | Porta |
+|------------|-----------|--------|-------|
+| **ArgoCD Server** | `argocd` | Interface web e API | 443 (HTTPS) |
+| **Application Controller** | `argocd` | Controla aplicações | - |
+| **Repo Server** | `argocd` | Servidor de repositórios Git | - |
+| **ApplicationSet** | `argocd` | Gerencia múltiplas aplicações | - |
+
+### 📦 ApplicationSet Configurado
+
+O script instala automaticamente um ApplicationSet com:
+
+- **SigNoz**: Plataforma de observabilidade
+- **Prometheus**: Métricas do sistema
+- **Node Exporter**: Métricas de nós
+
+---
+
+## 🌐 Acesso e Configuração
+
+### 🔐 Credenciais de Acesso
+
+```bash
+# Obter senha do admin
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 ```
 
-## 🔧 Componentes Instalados
+### 🌐 Acesso à Interface Web
 
-### ArgoCD Server
-- **Namespace**: `argocd`
-- **Função**: Interface web e API do ArgoCD
-- **Porta**: 443 (HTTPS)
+```bash
+# Port-forward para ArgoCD
+kubectl port-forward svc/argocd-server -n argocd 8080:443
 
-### ArgoCD Application Controller
-- **Namespace**: `argocd`
-- **Função**: Controla o estado das aplicações
-- **Status**: Verificar com `kubectl get pods -n argocd`
+# Acesse: https://localhost:8080
+# Usuário: admin
+# Senha: [senha obtida acima]
+```
 
-### ArgoCD Repo Server
-- **Namespace**: `argocd`
-- **Função**: Servidor de repositórios Git
-- **Status**: Verificar com `kubectl get pods -n argocd`
+### 📱 Acesso via CLI
 
-### ApplicationSet
-- **Namespace**: `argocd`
-- **Função**: Gerencia múltiplas aplicações
-- **Status**: Verificar com `kubectl get applicationset -n argocd`
+```bash
+# Instalar ArgoCD CLI
+curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+rm argocd-linux-amd64
 
-## 💡 Próximos Passos
+# Login via CLI
+argocd login localhost:8080 --username admin --password [senha]
+```
 
-1. Faça login na UI do ArgoCD com o usuário `admin` e a senha obtida.
-2. Considere alterar a senha padrão do admin na UI.
-3. Comece a configurar suas aplicações para deployment via GitOps com o ArgoCD.
-4. Configure repositórios Git para sincronização automática.
+---
 
-## 🔗 Componentes Relacionados
+## 🔧 Configuração Avançada
 
-- **Kubernetes Local**: Pré-requisito para execução
-- **SigNoz**: Para observabilidade das aplicações
-- **OpenTelemetry**: Para coleta de telemetria
+### 📝 ApplicationSet Personalizado
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: custom-apps
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - name: minha-app
+        namespace: production
+        repoURL: https://github.com/meu-repo
+        path: k8s/
+        targetRevision: main
+  template:
+    metadata:
+      name: '{{name}}'
+      namespace: '{{namespace}}'
+    spec:
+      project: default
+      source:
+        repoURL: '{{repoURL}}'
+        path: '{{path}}'
+        targetRevision: '{{targetRevision}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+```
+
+### 🔐 Configuração de Segurança
+
+```bash
+# Alterar senha do admin
+argocd account update-password --account admin --current-password [senha-atual] --new-password [nova-senha]
+
+# Configurar RBAC
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.default: role:readonly
+  policy.csv: |
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, */*, allow
+    p, role:admin, repositories, *, */*, allow
+    g, argocd-admins, role:admin
+EOF
+```
+
+---
+
+## 📊 Monitoramento e Operação
+
+### 🔍 Comandos de Verificação
+
+```bash
+# Status dos pods
+kubectl get pods -n argocd
+
+# Status dos ApplicationSets
+kubectl get applicationset -n argocd
+
+# Status das Applications
+kubectl get applications -n argocd
+
+# Logs do ArgoCD Server
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server
+
+# Logs do Application Controller
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller
+```
+
+### 📈 Métricas e Monitoramento
+
+```bash
+# Verificar métricas do ArgoCD
+kubectl port-forward svc/argocd-server-metrics -n argocd 8083:8083
+
+# Acesse: http://localhost:8083/metrics
+```
+
+---
+
+## 🎯 Casos de Uso
+
+### 👨‍💻 Para Desenvolvedores
+
+- **Deployment automático** de aplicações
+- **Rollback** fácil e rápido
+- **Histórico** de deployments
+- **Sincronização** com repositórios Git
+
+### 🔧 Para DevOps
+
+- **GitOps** workflow completo
+- **Multi-cluster** management
+- **ApplicationSet** para múltiplas aplicações
+- **Integração** com CI/CD
+
+### 📊 Para SRE
+
+- **Observabilidade** de deployments
+- **Alertas** de falhas
+- **Métricas** de performance
+- **Auditoria** de mudanças
+
+---
+
+## 🔧 Troubleshooting
+
+### ❌ Problemas Comuns
+
+#### Pods não ficam prontos
+```bash
+# Verificar logs
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server
+
+# Verificar recursos
+kubectl describe pod -n argocd -l app.kubernetes.io/name=argocd-server
+```
+
+#### ApplicationSet não cria Applications
+```bash
+# Verificar logs do ApplicationSet
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-applicationset-controller
+
+# Verificar configuração
+kubectl get applicationset -n argocd -o yaml
+```
+
+#### Falha de autenticação
+```bash
+# Verificar secret
+kubectl get secret argocd-initial-admin-secret -n argocd -o yaml
+
+# Recriar secret se necessário
+kubectl delete secret argocd-initial-admin-secret -n argocd
+kubectl create secret generic argocd-initial-admin-secret -n argocd --from-literal=password=$(openssl rand -base64 16)
+```
+
+### 🔧 Comandos de Diagnóstico
+
+```bash
+# Verificar status do cluster
+kubectl get nodes
+
+# Verificar recursos disponíveis
+kubectl top nodes
+kubectl top pods -n argocd
+
+# Verificar eventos
+kubectl get events -n argocd --sort-by='.lastTimestamp'
+```
+
+---
+
+## 📚 Documentação Adicional
+
+### 🔗 Links Úteis
+
+- **[ArgoCD Documentation](https://argo-cd.readthedocs.io/)** - Documentação oficial
+- **[ApplicationSet](https://argocd-applicationset.readthedocs.io/)** - Gerenciamento de múltiplas aplicações
+- **[GitOps Best Practices](https://www.gitops.tech/)** - Práticas recomendadas
+
+### 📖 Exemplos Práticos
+
+- **[Test API](test-api/k8s/argocd-app-*.yaml)** - Aplicações de exemplo
+- **[Kustomize](test-api/k8s/base/)** - Configurações por ambiente
+- **[Production](test-api/k8s/overlays/production/)** - Configurações de produção
+
+---
+
+## 🤝 Contribuição
+
+### 📝 Como Contribuir
+
+1. **Fork** o repositório
+2. **Crie** uma branch para sua feature
+3. **Atualize** a documentação
+4. **Teste** as mudanças
+5. **Abra** um Pull Request
+
+### 📋 Padrões de Código
+
+- **Bash**: Use `set -e` e tratamento de erros
+- **YAML**: Indentação consistente
+- **Documentação**: Markdown com exemplos práticos
+
+---
+
+## 📄 Licença
+
+Este projeto está sob a licença **MIT**. Veja o arquivo [LICENSE](LICENSE) para detalhes.
+
+---
+
+**Versão**: 1.0.0  
+**Última atualização**: $(date +%Y-%m-%d)  
+**Status**: ✅ Documentação Completa
