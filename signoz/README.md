@@ -1,5 +1,13 @@
 # 🔍 SigNoz - Plataforma de Observabilidade Completa
 
+![SigNoz Logo](images/signoz-brand-logo.svg)
+
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/SigNoz/signoz)
+[![Kubernetes](https://img.shields.io/badge/kubernetes-1.20+-blue.svg)](https://kubernetes.io/)
+[![Helm](https://img.shields.io/badge/helm-3.8+-blue.svg)](https://helm.sh/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![SigNoz](https://img.shields.io/badge/SigNoz-Observability-orange.svg)](https://signoz.io/)
+
 ## 📋 Visão Geral
 
 Este repositório contém **scripts automatizados** e **documentação completa** para instalação e configuração do SigNoz, oferecendo uma plataforma moderna de observabilidade com métricas, logs e traces em uma única interface.
@@ -16,37 +24,8 @@ Este repositório contém **scripts automatizados** e **documentação completa*
 
 ## 🏗️ Arquitetura do SigNoz
 
-```mermaid
-graph TB
-    subgraph "SigNoz Platform"
-        Frontend[SigNoz Frontend]
-        QueryService[Query Service]
-        OTelCollector[SigNoz OTel Collector]
-        ClickHouse[ClickHouse Database]
-    end
-    
-    subgraph "Data Sources"
-        Apps[Applications]
-        K8sMetrics[Kubernetes Metrics]
-        NodeMetrics[Node Metrics]
-        Logs[Application Logs]
-    end
-    
-    subgraph "External Tools"
-        Prometheus[Prometheus]
-        Jaeger[Jaeger]
-        Grafana[Grafana]
-    end
-    
-    Apps --> OTelCollector
-    K8sMetrics --> OTelCollector
-    NodeMetrics --> OTelCollector
-    Logs --> OTelCollector
-    
-    OTelCollector --> ClickHouse
-    QueryService --> ClickHouse
-    Frontend --> QueryService
-```
+![SigNoz Architecture](images/signoz-arquitetura.jpg)
+*Diagrama de arquitetura do SigNoz*
 
 ---
 
@@ -70,6 +49,9 @@ cd observabilidade-signoz
 chmod +x install.sh
 ./install.sh
 ```
+
+![SigNoz Login](images/signoz-login.png)
+*Tela de login do SigNoz após instalação*
 
 ### 🔧 Instalação Manual
 
@@ -136,17 +118,26 @@ kubectl port-forward svc/hotrod -n hotrod 8080:8080
 | **SigNoz UI** | http://localhost:3301 | Interface principal |
 | **HotROD App** | http://localhost:8080 | Aplicação de exemplo |
 
+![SigNoz Dashboard](images/signoz-dashboard.png)
+*Interface principal do SigNoz após login*
+
 ---
 
 ## 📊 Funcionalidades do SigNoz
 
 ### 🔍 Métricas
 
+![SigNoz Services](images/signoz-services.png)
+*Visualização de serviços e métricas no SigNoz*
+
 - **Métricas do Kubernetes**: CPU, memória, pods, nodes
 - **Métricas de aplicações**: Latência, throughput, erros
 - **Métricas customizadas**: Métricas específicas da aplicação
 
 ### 📝 Logs
+
+![SigNoz Exceptions](images/signoz-exceptions.png)
+*Interface de exceções e logs no SigNoz*
 
 - **Logs centralizados**: Todos os logs em um local
 - **Busca avançada**: Filtros por timestamp, nível, serviço
